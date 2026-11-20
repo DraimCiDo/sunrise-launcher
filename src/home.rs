@@ -35,13 +35,18 @@ const WORLD_TILE: f32 = 128.;
 const PACKS_AT_REST: f32 = 0.6;
 /// The room between the header and the panel under it.
 const GAP: f32 = 20.;
-/// How far the header stands in from the panel's edge.
-const INSET: f32 = 32.;
+/// The panel's padding, inside its 1 px edge.
+const PANEL_PAD: f32 = 22.;
+/// How far the header stands in from the panel's edge: as far as the panel's own text, at
+/// every width and with the sidebar open or closed.
+const INSET: f32 = 1. + PANEL_PAD;
 
 #[derive(Default)]
 pub(crate) struct HomeState {
     /// Where the build picker was last drawn: the build chooser opens under it.
     picker: Rc<Cell<Option<Bounds<gpui::Pixels>>>>,
+    /// Where the profile menu's button was last drawn: the menu opens under it.
+    menu: Rc<Cell<Option<Bounds<gpui::Pixels>>>>,
     /// The current frame's unboxed profile, measured before the backdrop is painted.
     hero: Rc<Cell<Option<Bounds<gpui::Pixels>>>>,
     /// What the selected profile has installed, for the Mods column.
@@ -210,6 +215,14 @@ impl HomeState {
             None => (INSET, 96.),
         }
     }
+
+    /// Where the profile menu opens: the left edge and the top, in the window.
+    pub(crate) fn menu_at(&self) -> (f32, f32) {
+        match self.menu.get() {
+            Some(button) => (f32::from(button.left()), f32::from(button.bottom()) + 6.),
+            None => (INSET, 96.),
+        }
+    }
 }
 
 /// Whether the play row, drawn at `row` (as tall as the build picker in it), shows in the page
@@ -327,7 +340,7 @@ impl Launcher {
                     .flex()
                     .flex_col()
                     .gap(px(16.))
-                    .p(px(22.))
+                    .p(px(PANEL_PAD))
                     .rounded(crate::tokens::r(crate::tokens::R_PANEL))
                     .bg(palette().chrome_plate())
                     .border_1()
@@ -532,19 +545,37 @@ impl Launcher {
                 .tooltip(crate::glass_ui::tip(label))
                 .child(crate::glass_ui::icon(icon, 21., rgb(p.text).into()))
         };
-        let mods = icon_button("alt-quick-mods", "puzzle", tr("Manage mods")).on_click(
-            cx.listener(|this, _, _, cx| {
-                this.show_installed_mods();
+        // One button for the profile's own options (Sunrise Extras, its folder), in a menu
+        // like the build chooser's. Mods has its tab in the top bar.
+        let at = self.ui.home.menu.clone();
+        let menu = icon_button("alt-quick-menu", "settings-01", tr("Profile options"))
+            .when(self.ui.sheet == Some(Sheet::ProfileMenu), |d| {
+                d.bg(rgb(p.hover))
+            })
+            .child(
+                gpui::canvas(
+                    move |bounds, window, cx| {
+                        if at.replace(Some(bounds)) != Some(bounds) {
+                            // An open menu follows it, in the frame after this one.
+                            let window = window.window_handle();
+                            cx.defer(move |cx| {
+                                window.update(cx, |_, window, _| window.refresh()).ok();
+                            });
+                        }
+                    },
+                    |_, _, _, _| {},
+                )
+                .absolute()
+                .inset_0(),
+            )
+            .on_click(cx.listener(|this, _, _, cx| {
+                if this.ui.sheet == Some(Sheet::ProfileMenu) {
+                    this.close_sheet();
+                } else {
+                    this.open_sheet(Sheet::ProfileMenu);
+                }
                 cx.notify();
-            }),
-        );
-        let home = instance.home.clone();
-        let folder = icon_button("alt-quick-folder", "folder-01", tr("Open folder")).on_click(
-            cx.listener(move |_, _, _, cx| {
-                crate::glass_toast::open(cx, &home);
-                cx.notify();
-            }),
-        );
+            }));
         let act = view.act.clone().map(|act| {
             let id = match act {
                 crate::launch_state::Act::StopBuild => "alt-build-stop",
@@ -617,8 +648,7 @@ impl Launcher {
                     .h(px(tall))
                     .child(play)
                     .child(self.build_picker(instance, cx))
-                    .child(mods)
-                    .child(folder)
+                    .child(menu)
                     .children(act)
                     .child(says),
             )

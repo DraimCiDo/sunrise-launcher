@@ -825,17 +825,17 @@ impl Launcher {
         let focused = focus.is_focused(window);
         let packs = matches!(self.ui.page, Page::Packs | Page::PackFind);
         let placeholder: SharedString = match (packs, installed) {
-            (false, false) => tr("Search mods"),
-            (false, true) => tr("Search your mods"),
+            (false, false) => tr("Search mods…"),
+            (false, true) => tr("Search your mods…"),
             (true, false) => match self.ui.mods.packs.scope {
-                pack_discover::Scope::Resource => tr("Search resource packs"),
-                pack_discover::Scope::Shader => tr("Search shader packs"),
-                pack_discover::Scope::Data => tr("Search data packs"),
+                pack_discover::Scope::Resource => tr("Search resource packs…"),
+                pack_discover::Scope::Shader => tr("Search shader packs…"),
+                pack_discover::Scope::Data => tr("Search data packs…"),
             },
             (true, true) => match self.ui.mods.shelf {
-                Shelf::Resource => tr("Search your resource packs"),
-                Shelf::Shader => tr("Search your shader packs"),
-                Shelf::Data => tr("Search your data packs"),
+                Shelf::Resource => tr("Search your resource packs…"),
+                Shelf::Shader => tr("Search your shader packs…"),
+                Shelf::Data => tr("Search your data packs…"),
             },
         }
         .into();
