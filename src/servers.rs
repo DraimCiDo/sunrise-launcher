@@ -235,10 +235,11 @@ pub fn can_host(tag: &str) -> Result<(), String> {
             &[("tag", tag)],
         ));
     }
-    if !backend::check_prepared(tag) {
+    let owner = backend::resources_owner(tag);
+    if !backend::check_prepared(&owner) {
         return Err(format!(
             "Sunrise {tag} isn't prepared yet: press Prepare on the Play page (it uses your own Minecraft {})",
-            backend::game_version(tag)
+            backend::game_version(&owner)
         ));
     }
     Ok(())
@@ -254,12 +255,19 @@ pub fn set_up(tag: &str) -> Result<(), String> {
         &runtime_root(),
         &backend::version_dir(tag),
         tag,
-        &backend::game_version(tag),
+        &backend::game_version(&backend::resources_owner(tag)),
+        &backend::resources(tag),
     )
 }
 
 /// [`set_up`] with its folders given (for tests).
-pub fn set_up_in(root: &Path, version: &Path, tag: &str, game_version: &str) -> Result<(), String> {
+pub fn set_up_in(
+    root: &Path,
+    version: &Path,
+    tag: &str,
+    game_version: &str,
+    resources: &Path,
+) -> Result<(), String> {
     let releases = root.join("releases");
     fs::create_dir_all(&releases).map_err(|e| format!("{}: {e}", releases.display()))?;
     let release = releases.join(tag);
@@ -282,11 +290,19 @@ pub fn set_up_in(root: &Path, version: &Path, tag: &str, game_version: &str) -> 
         point(&root.join("current"), &release).map_err(|e| e.to_string())?;
     }
     // The game files: a copy (preparing again rewrites files in place), swapped in whole.
-    let from = version.join(".local/sunrise-client").join(game_version);
+    // Native builds share their base's prepared resources, as Play does; only the
+    // programs above come from the selected build.
+    let from = resources;
     let to = game_files(root, game_version);
     let fresh = to.with_extension("copying");
     let _ = fs::remove_dir_all(&fresh);
-    copy_dir(&from, &fresh).map_err(|e| format!("copying the game files: {e}"))?;
+    copy_dir(from, &fresh).map_err(|e| {
+        format!(
+            "copying the game files from {} to {}: {e}",
+            from.display(),
+            fresh.display()
+        )
+    })?;
     let old = to.with_extension("old");
     let _ = fs::remove_dir_all(&old);
     if to.exists() {

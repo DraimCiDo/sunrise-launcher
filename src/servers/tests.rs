@@ -65,7 +65,8 @@ fn programs_are_laid_out_as_install_sh_does() {
     )
     .unwrap();
     let rt = root.join("runtime");
-    set_up_in(&rt, &version, "v1", "26.3").unwrap();
+    let resources = version.join(".local/sunrise-client/26.3");
+    set_up_in(&rt, &version, "v1", "26.3", &resources).unwrap();
     assert_eq!(
         fs::read_to_string(rt.join("current").join(PROGRAM)).unwrap(),
         "server"
@@ -83,13 +84,77 @@ fn programs_are_laid_out_as_install_sh_does() {
         "{\"new\":1}",
     )
     .unwrap();
-    set_up_in(&rt, &version, "v1", "26.3").unwrap();
+    set_up_in(&rt, &version, "v1", "26.3", &resources).unwrap();
     assert_eq!(
         fs::read_to_string(game_files(&rt, "26.3").join("sunrise-resources.json")).unwrap(),
         "{\"new\":1}"
     );
     assert!(!game_files(&rt, "26.3").with_extension("old").exists());
     fs::remove_dir_all(&root).unwrap();
+}
+
+#[test]
+fn native_server_setup_uses_base_resources_and_native_programs() {
+    const ACTOR: &str = "SUNRISE_TEST_NATIVE_SERVER_SETUP";
+    if std::env::var_os(ACTOR).is_none() {
+        let home = tempfile::tempdir().unwrap();
+        assert!(Command::new(std::env::current_exe().unwrap())
+            .args([
+                "--exact",
+                "servers::tests::native_server_setup_uses_base_resources_and_native_programs",
+            ])
+            .env(ACTOR, "1")
+            .env("SUNRISE_LAUNCHER_HOME", home.path())
+            .status()
+            .unwrap()
+            .success());
+        return;
+    }
+    let base = "nightly-server-resources";
+    let native = "native-server-resources";
+    let base_dir = backend::version_dir(base);
+    let native_dir = backend::version_dir(native);
+    for dir in [&base_dir, &native_dir] {
+        fs::create_dir_all(dir).unwrap();
+        fs::write(dir.join(".installed"), "").unwrap();
+    }
+    fs::write(base_dir.join(PROGRAM), "base server").unwrap();
+    fs::write(native_dir.join(PROGRAM), "native server").unwrap();
+    fs::write(
+        native_dir.join("native-mods.json"),
+        json!({"base": base, "sunrise": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "target": "client"}).to_string(),
+    )
+    .unwrap();
+    // Only the base has resources; the native build need not duplicate them.
+    assert!(can_host(native).is_err());
+    let resources = backend::resources(base);
+    fs::create_dir_all(resources.join("nested")).unwrap();
+    fs::write(resources.join("sunrise-resources.json"), "{}").unwrap();
+    fs::write(resources.join("nested/data"), "base resources").unwrap();
+    assert!(can_host(base).is_ok());
+    assert!(can_host(native).is_ok());
+    set_up(native).unwrap();
+    assert_eq!(
+        fs::read_to_string(program().unwrap()).unwrap(),
+        "native server"
+    );
+    let copied = game_files(&runtime_root(), &backend::game_version(base));
+    assert_eq!(
+        fs::read_to_string(copied.join("nested/data")).unwrap(),
+        "base resources"
+    );
+    assert!(!native_dir.join(".local/sunrise-client").exists());
+    // Refresh an existing runtime from the same resolved base, too.
+    fs::write(resources.join("nested/data"), "updated resources").unwrap();
+    set_up(native).unwrap();
+    assert_eq!(
+        fs::read_to_string(copied.join("nested/data")).unwrap(),
+        "updated resources"
+    );
+    assert!(!copied.with_extension("old").exists());
+    // A missing base still produces the actionable reinstall message.
+    fs::remove_file(base_dir.join(".installed")).unwrap();
+    assert!(set_up(native).unwrap_err().contains("reinstall"));
 }
 
 #[cfg(unix)]
