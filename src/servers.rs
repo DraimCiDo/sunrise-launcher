@@ -19,6 +19,8 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::time::Duration;
 
+pub mod network;
+
 const PROGRAM: &str = if cfg!(windows) {
     "sunrise-server.exe"
 } else {

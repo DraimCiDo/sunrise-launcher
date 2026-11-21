@@ -573,20 +573,50 @@ impl Launcher {
             .setting("server", "port")
             .and_then(Value::as_u64)
             .unwrap_or(25565);
-        let address = match servers::lan_address() {
-            Some(ip) if port == 25565 => ip.to_string(),
-            Some(ip) => format!("{ip}:{port}"),
-            None => format!("localhost:{port}"),
+        let port = port as u16;
+        let internet = self.servers.internet_address;
+        let local_ip = servers::lan_address();
+        let address = if internet {
+            self.servers.public_address.as_ref().and_then(|result| {
+                result
+                    .as_ref()
+                    .ok()
+                    .map(|ip| servers::network::address((*ip).into(), port))
+            })
+        } else {
+            Some(local_ip.map_or_else(
+                || format!("localhost:{port}"),
+                |ip| servers::network::address(ip, port),
+            ))
         };
         let copied = self
             .servers
             .copied
             .is_some_and(|at| at.elapsed() < Duration::from_secs(2));
         let copy = address.clone();
-        let here = card()
+        let modes = chip_group(
+            "host-address-network",
+            &[("lan", "Local network"), ("internet", "Internet")],
+            if internet { "internet" } else { "lan" },
+            cx,
+            |this, value| {
+                this.servers.internet_address = value == "internet";
+                this.servers.copied = None;
+                if this.servers.internet_address && this.servers.public_address.is_none() {
+                    this.find_server_public_address();
+                }
+            },
+        );
+        let mut here = card()
             .gap(px(8.))
             .p(px(16.))
-            .child(label("Address on this network"))
+            .child(label("Address to share"))
+            .child(modes)
+            .child(label(if internet {
+                "Public internet address"
+            } else {
+                "Address on this network"
+            }))
             .child(
                 div()
                     .flex()
@@ -598,26 +628,60 @@ impl Launcher {
                             .min_w_0()
                             .font_family(theme::MONO)
                             .text_size(px(tokens::HEADING))
-                            .child(address),
+                            .child(address.clone().unwrap_or_else(|| {
+                                tr(if self.servers.public_address_loading {
+                                    "Finding public IP…"
+                                } else {
+                                    "Public IP unavailable"
+                                })
+                                .to_string()
+                            })),
                     )
                     .child(self.host_button(
                         "host-address-copy",
                         tr(if copied { "Copied" } else { "Copy" }),
-                        true,
+                        address.is_some(),
                         cx,
                         move |this, cx| {
-                            copy_to_clipboard(cx, gpui::ClipboardItem::new_string(copy.clone()));
-                            this.servers.copied = Some(Instant::now());
+                            if let Some(copy) = &copy {
+                                copy_to_clipboard(
+                                    cx,
+                                    gpui::ClipboardItem::new_string(copy.clone()),
+                                );
+                                this.servers.copied = Some(Instant::now());
+                            }
                         },
                     )),
-            )
-            .child(hint(tr(
+            );
+        if internet {
+            here = here
+                .child(self.host_button(
+                    "host-public-address-refresh",
+                    tr("Refresh public IP"),
+                    !self.servers.public_address_loading,
+                    cx,
+                    |this, _| this.find_server_public_address(),
+                ))
+                .child(hint(tr("The public IPv4 address is detected using ipify. This does not check whether the server is reachable.")))
+                .child(hint(trf(
+                    "Forward TCP port {port} on your router to this computer and allow it through your firewall. If your provider uses CGNAT, you need a public IP or a tunnel.",
+                    &[("port", &port.to_string())],
+                )));
+            if matches!(self.servers.public_address, Some(Err(_))) {
+                here = here.child(warning(tr(
+                    "Could not find your public IP. Check your internet connection and try again.",
+                )));
+            }
+        } else if local_ip.is_some() {
+            here = here.child(hint(tr(
                 "Friends on the same Wi-Fi: Multiplayer, Add Server, then paste this address.",
-            )))
-            .child(hint(trf(
-                "Friends elsewhere can't reach it as it is: use Tailscale below, or forward TCP port {port} on your router to this computer.",
-                &[("port", &port.to_string())],
             )));
+        } else {
+            here = here.child(hint(tr(
+                "No local network address was found. localhost works only on this computer.",
+            )));
+        }
+        here = here.child(hint(tr("This selection chooses the address to share; it does not change which networks the server listens on.")));
         let on = status.running();
         let dash = || "–".to_string();
         let stat = |value: String, name: &str| {
@@ -700,7 +764,7 @@ impl Launcher {
             );
         }
         right = right.child(self.host_console(on, cx));
-        let sharing = self.hosting_share(port as u16, cx);
+        let sharing = self.hosting_share(port, cx);
         div()
             .flex()
             .items_start()

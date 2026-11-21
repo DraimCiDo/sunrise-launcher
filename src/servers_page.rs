@@ -103,6 +103,7 @@ const DIFFICULTIES: [(&str, &str); 4] = [
 
 /// What the background work reports.
 pub(super) enum Event {
+    PublicAddress(Result<std::net::Ipv4Addr, String>),
     Polled {
         dir: PathBuf,
         status: Box<Status>,
@@ -231,6 +232,10 @@ pub(super) struct Servers {
     /// A field whose value was refused, and why: shown under it until it's edited.
     invalid: Option<(Field, &'static str)>,
     copied: Option<Instant>,
+    /// Address view only: this never changes server-ip or router settings.
+    internet_address: bool,
+    public_address: Option<Result<std::net::Ipv4Addr, String>>,
+    public_address_loading: bool,
     faces: HashMap<String, Option<Vec<[u8; 4]>>>,
     tx: Sender<Event>,
     rx: Receiver<Event>,
@@ -277,6 +282,9 @@ impl Servers {
             selected: None,
             invalid: None,
             copied: None,
+            internet_address: false,
+            public_address: None,
+            public_address_loading: false,
             faces: HashMap::new(),
             tx,
             rx,
@@ -531,6 +539,11 @@ impl Launcher {
     fn servers_event(&mut self, event: Event) -> bool {
         let s = &mut self.servers;
         match event {
+            Event::PublicAddress(result) => {
+                s.public_address_loading = false;
+                s.public_address = Some(result);
+                true
+            }
             Event::Polled { dir, status, logs } => {
                 s.polling = false;
                 let mut changed = false;
@@ -680,6 +693,19 @@ impl Launcher {
                 true
             }
         }
+    }
+
+    fn find_server_public_address(&mut self) {
+        if self.servers.public_address_loading {
+            return;
+        }
+        self.servers.public_address_loading = true;
+        self.servers.public_address = None;
+        self.servers.copied = None;
+        let tx = self.servers.tx.clone();
+        std::thread::spawn(move || {
+            let _ = tx.send(Event::PublicAddress(servers::network::public_ipv4()));
+        });
     }
 
     /// The `pvp` game rule, asked of the running game (it's a rule of the world, not a setting).

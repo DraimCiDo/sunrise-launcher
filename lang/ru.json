@@ -1456,5 +1456,17 @@
   "Removed 1 mod.": "Removed 1 mod.",
   "Turned off 1 mod. The game reads this when it starts.": "Turned off 1 mod. The game reads this when it starts.",
   "Updated 1 mod, checked against the registry.": "Updated 1 mod, checked against the registry.",
-  "Sign in with Microsoft": "Войти через Microsoft"
+  "Sign in with Microsoft": "Войти через Microsoft",
+  "Address to share": "Адрес для подключения",
+  "Local network": "Локальная сеть",
+  "Internet": "Интернет",
+  "Public internet address": "Внешний адрес",
+  "Finding public IP…": "Определяем внешний IP…",
+  "Public IP unavailable": "Внешний IP недоступен",
+  "Refresh public IP": "Обновить внешний IP",
+  "The public IPv4 address is detected using ipify. This does not check whether the server is reachable.": "Внешний IPv4 определяется через ipify. Это не проверяет доступность сервера.",
+  "Forward TCP port {port} on your router to this computer and allow it through your firewall. If your provider uses CGNAT, you need a public IP or a tunnel.": "Пробросьте TCP-порт {port} на роутере на этот компьютер и разрешите его в брандмауэре. Если провайдер использует CGNAT, нужен публичный IP или туннель.",
+  "Could not find your public IP. Check your internet connection and try again.": "Не удалось определить внешний IP. Проверьте подключение к интернету и повторите попытку.",
+  "No local network address was found. localhost works only on this computer.": "Адрес локальной сети не найден. localhost работает только на этом компьютере.",
+  "This selection chooses the address to share; it does not change which networks the server listens on.": "Здесь выбирается адрес для подключения; сетевые интерфейсы сервера не меняются."
 }
